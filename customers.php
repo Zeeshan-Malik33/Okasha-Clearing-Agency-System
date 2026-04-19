@@ -2862,7 +2862,7 @@ window.openContainerTabbedModal = function(containerId, customerId) {
                                         </div>
                                         <div>
                                             <label class="block text-xs font-semibold text-gray-700 mb-1">Amount *</label>
-                                            <input type="number" step="0.01" min="0.01" name="amount" required class="w-full border border-gray-300 p-2 rounded text-sm" placeholder="0.00">
+                                            <input type="number" step="0.01" name="amount" required class="w-full border border-gray-300 p-2 rounded text-sm" placeholder="0.00">
                                         </div>
                                     </div>
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
