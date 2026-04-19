@@ -737,6 +737,7 @@ if ($isAjax) {
         <div class="absolute bottom-0 left-0 w-full h-1 sparkline-gradient opacity-40"></div>
     </div> -->
 
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
     <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group min-h-[100px] flex flex-col justify-between">
         <p class="text-xs font-medium text-slate-500 mb-1">Account Remaining</p>
         <h3 id="dashboardAccountRemaining" class="text-2xl font-bold text-emerald-600" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2;">Rs <?= number_format($accountRemaining, 2) ?></h3>
