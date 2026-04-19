@@ -586,6 +586,7 @@ if ($action === 'add_container' && $_SERVER['REQUEST_METHOD'] === 'POST' && $isA
     error_log("POST data: " . print_r($_POST, true));
     
     $customer_id  = (int)($_POST['customer_id'] ?? 0);
+    $container_owner = trim($_POST['container_owner'] ?? '');
     $bl_number    = trim($_POST['bl_number'] ?? '');
     $container_no = trim($_POST['container_number'] ?? '');
     $hs_code      = trim($_POST['hs_code'] ?? '');
@@ -637,8 +638,8 @@ if ($action === 'add_container' && $_SERVER['REQUEST_METHOD'] === 'POST' && $isA
     $newContainerId = getNextReusableId($conn, 'containers');
     $stmt = $conn->prepare("
         INSERT INTO containers
-        (id, customer_id, bl_number, container_number, HS_code, tp_no, packages, gd_no, destination, port, net_weight, gross_weight, rate, invoice_file, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, customer_id, container_owner, bl_number, container_number, HS_code, tp_no, packages, gd_no, destination, port, net_weight, gross_weight, rate, invoice_file, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     
     if (!$stmt) {
@@ -649,9 +650,10 @@ if ($action === 'add_container' && $_SERVER['REQUEST_METHOD'] === 'POST' && $isA
     }
     
     $stmt->bind_param(
-        "iissssisssdddsss",
+        "iisssssisssdddsss",
         $newContainerId,
         $customer_id,
+        $container_owner,
         $bl_number,
         $container_no,
         $hs_code,
@@ -2058,6 +2060,12 @@ window.viewCustomerProfile = function(customerId) {
                                         <div>
                                             <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Container Number *</label>
                                             <input type="text" name="container_number" required placeholder="Container Number" 
+                                                class="w-full border-2 border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white px-3 py-2.5 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                                        </div>
+                                        
+                                        <div>
+                                            <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Container's Owner *</label>
+                                            <input type="text" name="container_owner" required placeholder="Owner Name" 
                                                 class="w-full border-2 border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white px-3 py-2.5 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
                                         </div>
                                         
@@ -4734,6 +4742,9 @@ window.buildContainerLedgerPrintHtml = function(payload) {
                     <td class="info-label">BL #</td><td class="info-value">${escapeHtml(dispBlNumber)}</td>
                 </tr>
                 <tr>
+                    <td class="info-label">Owner</td><td class="info-value" colspan="3">${escapeHtml(c.container_owner || '-')}</td>
+                </tr>
+                <tr>
                     <td class="info-label">HS Code</td><td class="info-value">${escapeHtml(dispHsCode)}</td>
                     <td class="info-label">GD #</td><td class="info-value">${escapeHtml(dispGdNo)}</td>
                 </tr>
@@ -4847,6 +4858,9 @@ window.buildExpenseReportPrintHtml = function(payload) {
                 <tr>
                     <td class="info-label">Container #</td><td class="info-value">${escapeHtml(dispContainerNumber)}</td>
                     <td class="info-label">BL #</td><td class="info-value">${escapeHtml(dispBlNumber)}</td>
+                </tr>
+                <tr>
+                    <td class="info-label">Owner</td><td class="info-value" colspan="3">${escapeHtml(c.container_owner || '-')}</td>
                 </tr>
                 <tr>
                     <td class="info-label">HS Code</td><td class="info-value">${escapeHtml(dispHsCode)}</td>
@@ -5041,6 +5055,7 @@ window.editContainerInModal = function(containerId, customerId) {
         form.elements['status'].value = cont.status || 'pending';
 
         form.elements['container_number'].value = cont.container_number || '';
+        form.elements['container_owner'].value = cont.container_owner || '';
         form.elements['bl_number'].value = cont.bl_number || '';
         form.elements['tp_no'].value = cont.tp_no || '';
         form.elements['gd_no'].value = cont.gd_no || '';

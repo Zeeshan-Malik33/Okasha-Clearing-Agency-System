@@ -288,6 +288,7 @@ if ($action === 'details' && $id && $isAjax) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'edit') {
     $container_id = (int)($_POST['container_id'] ?? 0);
     $customer_id  = (int)($_POST['customer_id'] ?? 0);
+    $container_owner = trim($_POST['container_owner'] ?? '');
     $bl_number    = trim($_POST['bl_number'] ?? '');
     $container_no = trim($_POST['container_number'] ?? '');
     $hs_code      = trim($_POST['hs_code'] ?? '');
@@ -337,6 +338,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'edit') {
         $stmt = $conn->prepare(" 
             UPDATE containers SET
                 customer_id = ?,
+                container_owner = ?,
                 bl_number = ?,
                 container_number = ?,
                 HS_code = ?,
@@ -353,8 +355,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'edit') {
             WHERE id = ?
         ");
         $stmt->bind_param(
-            "issssisssdddssi",
+            "isssssisssdddssi",
             $customer_id,
+            $container_owner,
             $bl_number,
             $container_no,
             $hs_code,
@@ -618,6 +621,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'expense') 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'add') {
 
     $customer_id  = (int)$_POST['customer_id'];
+    $container_owner = trim($_POST['container_owner'] ?? '');
     $bl_number    = trim($_POST['bl_number']);
     $container_no = trim($_POST['container_number']);
     $hs_code      = trim($_POST['hs_code']);
@@ -650,12 +654,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'add') {
 
     $stmt = $conn->prepare("
         INSERT INTO containers
-        (customer_id, bl_number, container_number, HS_code, net_weight, gross_weight, rate, invoice_file, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (customer_id, container_owner, bl_number, container_number, HS_code, net_weight, gross_weight, rate, invoice_file, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->bind_param(
-        "isssdddsss",
+        "isssdddssss",
         $customer_id,
+        $container_owner,
         $bl_number,
         $container_no,
         $hs_code,
@@ -1495,6 +1500,9 @@ if ($action === 'invoice_view' && $id && $isAjax) {
         <?php if (!empty($container['bl_number'])): ?>
         <div class="inv-detail-item"><span class="inv-label">B/L #:</span> <span><?= htmlspecialchars($container['bl_number']) ?></span></div>
         <?php endif; ?>
+        <?php if (!empty($container['container_owner'])): ?>
+        <div class="inv-detail-item"><span class="inv-label">Owner:</span> <span><?= htmlspecialchars($container['container_owner']) ?></span></div>
+        <?php endif; ?>
         <?php if (!empty($container['hs_code'])): ?>
         <div class="inv-detail-item"><span class="inv-label">HS Code:</span> <span><?= htmlspecialchars($container['hs_code']) ?></span></div>
         <?php endif; ?>
@@ -1808,7 +1816,14 @@ if ($isAjax) {
                     <label class="block text-xs font-semibold text-gray-700 mb-1">
                         <i class="fas fa-box text-blue-600 mr-1"></i>Container Number
                     </label>
-                    <input name="container_number" id="container_number" placeholder="Container Number" class="w-full border border-gray-300 p-2 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                    <input name="container_number" id="container_number" required placeholder="Container Number" class="w-full border border-gray-300 p-2 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">
+                        <i class="fas fa-user-circle text-blue-600 mr-1"></i>Container's Owner
+                    </label>
+                    <input name="container_owner" id="container_owner" required placeholder="Owner Name" class="w-full border border-gray-300 p-2 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
                 </div>
 
                 <div>
@@ -3315,6 +3330,7 @@ if (document.currentScript && document.currentScript.textContent.trim().startsWi
                 document.getElementById('customer_id').value = data.customer_id;
                 document.getElementById('customer_id').readOnly = false; // Enable for editing
                 document.getElementById('bl_number').value = data.bl_number || '';
+                document.getElementById('container_owner').value = data.container_owner || '';
                 document.getElementById('container_number').value = data.container_number || '';
                 document.getElementById('hs_code').value = data.HS_code || '';
                 document.getElementById('net_weight').value = data.net_weight || '';
