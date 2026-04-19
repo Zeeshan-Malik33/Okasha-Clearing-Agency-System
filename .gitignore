@@ -1,0 +1,20 @@
+# =========================
+# 🔐 Sensitive Configuration
+# =========================
+config/database.php
+config/constants.php
+config/auth.php
+container_management.sql
+.env
+
+# =========================
+# 📁 User Uploads (DO NOT PUSH)
+# =========================
+uploads/
+
+# =========================
+# 🧾 Logs & Debug Files
+# =========================
+*.log
+error_log
+debug.log
