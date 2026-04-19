@@ -250,7 +250,7 @@ if ($isAjax) {
                     }
                 }
 
-                // Decrease total and remaining by the profit amount (paid stays unchanged)
+                // Decrease total and remaining by the profit amount robustly
                 $stmt = $conn->prepare("UPDATE partners SET total = GREATEST(0, total - ?), remaining = GREATEST(0, remaining - ?) WHERE id = ?");
                 $stmt->bind_param("ddi", $profitAmount, $profitAmount, $partner_id);
                 $stmt->execute();
@@ -632,15 +632,12 @@ if ($isAjax) {
             );
             $stmt->execute();
 
-            $newTotal = ($p['total'] ?? 0) + $partnerShare;
-            $newRemaining = ($p['remaining'] ?? 0) + $partnerShare;
-
             $stmt = $conn->prepare("
                 UPDATE partners
-                SET total = ?, remaining = ?
+                SET total = total + ?, remaining = remaining + ?
                 WHERE id = ?
             ");
-            $stmt->bind_param("ddi", $newTotal, $newRemaining, $p['id']);
+            $stmt->bind_param("ddi", $partnerShare, $partnerShare, $p['id']);
             $stmt->execute();
         }
 
