@@ -14,6 +14,7 @@ $trans_columns = [
     'total_paid' => "DECIMAL(10,2) DEFAULT 0.00",
     'remaining_amount' => "DECIMAL(10,2) DEFAULT 0.00",
     'container_id' => "INT NULL",
+    'expense_id' => "INT NULL",
     'proof' => "VARCHAR(255) NULL"
 ];
 foreach ($trans_columns as $col => $def) {

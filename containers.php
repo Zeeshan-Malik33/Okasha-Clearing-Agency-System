@@ -501,6 +501,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'delete_exp
     // Get info before delete to potentially revert agent transaction? 
     // For now, simple delete.
     
+    // First, add expense_id column dynamically if missing
+    try { @$conn->query("ALTER TABLE agent_transactions ADD COLUMN expense_id INT NULL"); } catch (Exception $e) {}
+
+    // Find and delete matching agent transaction
+    $conn->query("DELETE FROM agent_transactions WHERE expense_id = $expense_id");
+    // Fallback for older transactions
+    $oldExp = $conn->query("SELECT amount, agent_id, expense_type, container_id FROM container_expenses WHERE id = $expense_id")->fetch_assoc();
+    if ($oldExp && $oldExp['agent_id']) {
+        $descMatch = "Expense: " . $conn->real_escape_string($oldExp['expense_type']) . " (Container #" . (int)$oldExp['container_id'] . ")";
+        $conn->query("DELETE FROM agent_transactions WHERE agent_id = " . (int)$oldExp['agent_id'] . " AND container_id = " . (int)$oldExp['container_id'] . " AND description = '$descMatch' AND credit = " . (float)$oldExp['amount'] . " LIMIT 1");
+    }
+    
     $conn->query("DELETE FROM container_expenses WHERE id = $expense_id");
     
     if ($isAjax) {
@@ -546,6 +558,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'expense') 
     }
 
     if ($id) {
+        // Attempt to add expense_id column if it doesn't exist
+        try { @$conn->query("ALTER TABLE agent_transactions ADD COLUMN expense_id INT NULL"); } catch (Exception $e) {}
+
+        // Get old expense before update
+        $oldQuery = $conn->query("SELECT amount, agent_id, expense_type FROM container_expenses WHERE id = $id");
+        $oldExp = $oldQuery->fetch_assoc();
+        $oldAgentId = $oldExp && $oldExp['agent_id'] ? (int)$oldExp['agent_id'] : null;
+        $oldAmount = $oldExp ? (float)$oldExp['amount'] : 0.0;
+        $oldType = $oldExp ? $oldExp['expense_type'] : '';
+
         // Update
         $stmt = $conn->prepare("
             UPDATE container_expenses 
@@ -554,7 +576,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'expense') 
         ");
         $stmt->bind_param("isssisi", $container_id, $type, $amount, $date, $agent_id, $proofFile, $id);
         $stmt->execute();
+        
+        // Handle Agent Transaction differences
+        // If agent was removed
+        if ($oldAgentId && !$agent_id) {
+            $conn->query("DELETE FROM agent_transactions WHERE expense_id = $id");
+            if ($conn->affected_rows == 0) {
+                $descMatch = "Expense: " . $conn->real_escape_string($oldType) . " (Container #$container_id)";
+                $conn->query("DELETE FROM agent_transactions WHERE agent_id = $oldAgentId AND container_id = $container_id AND description = '$descMatch' AND credit = $oldAmount LIMIT 1");
+            }
+        }
+        // If agent was added
+        else if (!$oldAgentId && $agent_id && $addToAgent) {
+            $desc = "Expense: $type (Container #$container_id)";
+            $stmt2 = $conn->prepare("
+                INSERT INTO agent_transactions (agent_id, container_id, expense_id, description, credit, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+            $stmt2->bind_param("iiisds", $agent_id, $container_id, $id, $desc, $amount, $date);
+            $stmt2->execute();
+        }
+        // If agent was changed, amount changed, or type changed
+        else if ($oldAgentId && $agent_id && $addToAgent) {
+            if ($oldAgentId != $agent_id || $oldAmount != $amount || $oldType != $type) {
+                $conn->query("DELETE FROM agent_transactions WHERE expense_id = $id");
+                if ($conn->affected_rows == 0) {
+                    $descMatch = "Expense: " . $conn->real_escape_string($oldType) . " (Container #$container_id)";
+                    $conn->query("DELETE FROM agent_transactions WHERE agent_id = $oldAgentId AND container_id = $container_id AND description = '$descMatch' AND credit = $oldAmount LIMIT 1");
+                }
+                
+                $desc = "Expense: $type (Container #$container_id)";
+                $stmt2 = $conn->prepare("
+                    INSERT INTO agent_transactions (agent_id, container_id, expense_id, description, credit, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                $stmt2->bind_param("iiisds", $agent_id, $container_id, $id, $desc, $amount, $date);
+                $stmt2->execute();
+            }
+        }
+        
+        // Recalculate old agent if it's involved and distinct
+        if ($oldAgentId && $oldAgentId != $agent_id) {
+            $ledger = $conn->query("SELECT SUM(credit) as credit, SUM(debit) as debit FROM agent_transactions WHERE agent_id = $oldAgentId")->fetch_assoc();
+            $credit = $ledger['credit'] ?? 0;
+            $debit = $ledger['debit'] ?? 0;
+            $balance = $credit - $debit; 
+            $conn->query("UPDATE agents SET total_amount = $credit, total_paid = $debit, remaining_amount = $balance WHERE id = $oldAgentId");
+        }
+        
+        // Recalculate new agent if it was involved
+        if ($agent_id) {
+            $ledger = $conn->query("SELECT SUM(credit) as credit, SUM(debit) as debit FROM agent_transactions WHERE agent_id = $agent_id")->fetch_assoc();
+            $credit = $ledger['credit'] ?? 0;
+            $debit = $ledger['debit'] ?? 0;
+            $balance = $credit - $debit; 
+            $conn->query("UPDATE agents SET total_amount = $credit, total_paid = $debit, remaining_amount = $balance WHERE id = $agent_id");
+        }
     } else {
+        // Attempt to add expense_id column if it doesn't exist
+        try { @$conn->query("ALTER TABLE agent_transactions ADD COLUMN expense_id INT NULL"); } catch (Exception $e) {}
+
         // Insert
         $stmt = $conn->prepare("
             INSERT INTO container_expenses
@@ -563,36 +644,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'expense') 
         ");
         $stmt->bind_param("isdsssi", $container_id, $type, $amount, $date, $agent_id, $proofFile, $addToAgent);
         $stmt->execute();
+        $expense_id = $conn->insert_id;
 
         // If agent IS selected, add to agent transactions
         if ($agent_id && $addToAgent) {
-            // Fetch current agent stats first
-            $agentQ = $conn->query("SELECT total_amount, total_paid, remaining_amount FROM agents WHERE id = $agent_id");
-            if ($ag = $agentQ->fetch_assoc()) {
-                $new_total = $ag['total_amount'] + $amount;
-                $new_rem = $ag['remaining_amount'] + $amount;
-                $current_paid = $ag['total_paid'];
-
-                // Insert Transaction with snapshot
-                $stmt2 = $conn->prepare("
-                    INSERT INTO agent_transactions
-                    (agent_id, container_id, description, credit, created_at, total_amount, total_paid, remaining_amount)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ");
-                $desc = "Expense: $type (Container #$container_id)";
-                $stmt2->bind_param("iisdsddd", $agent_id, $container_id, $desc, $amount, $date, $new_total, $current_paid, $new_rem);
-                $stmt2->execute();
-                
-                // Update Agent Totals
-                $updateAgent = $conn->prepare("
-                    UPDATE agents 
-                    SET total_amount = ?, 
-                        remaining_amount = ? 
-                    WHERE id = ?
-                ");
-                $updateAgent->bind_param("ddi", $new_total, $new_rem, $agent_id);
-                $updateAgent->execute();
-            }
+            $desc = "Expense: $type (Container #$container_id)";
+            $stmt2 = $conn->prepare("
+                INSERT INTO agent_transactions (agent_id, container_id, expense_id, description, credit, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+            $stmt2->bind_param("iiisds", $agent_id, $container_id, $expense_id, $desc, $amount, $date);
+            $stmt2->execute();
+            
+            // Recalculate agent
+            $ledger = $conn->query("SELECT SUM(credit) as credit, SUM(debit) as debit FROM agent_transactions WHERE agent_id = $agent_id")->fetch_assoc();
+            $credit = $ledger['credit'] ?? 0;
+            $debit = $ledger['debit'] ?? 0;
+            $balance = $credit - $debit; 
+            $conn->query("UPDATE agents SET total_amount = $credit, total_paid = $debit, remaining_amount = $balance WHERE id = $agent_id");
         }
     }
 
@@ -602,7 +671,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin && $action === 'expense') 
             'success' => true,
             'message' => $id ? 'Expense updated successfully' : 'Expense added successfully',
             'container_id' => (int)$container_id,
-            'expense_id' => $id ? (int)$id : (int)$conn->insert_id
+            'expense_id' => $id ? (int)$id : (int)$expense_id
         ], JSON_UNESCAPED_SLASHES | JSON_NUMERIC_CHECK);
         exit;
     }
